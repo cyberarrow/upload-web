@@ -4,6 +4,9 @@
   /*Font-family*/
   --font-sans: 'Inter', sans-serif;
 
+  /*Font-size*/
+  --text-xxs: 0.625rem;
+
   /*Opacity*/
   --opacity-2: 0.02;
 
