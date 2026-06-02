@@ -4,7 +4,7 @@ import { Title } from './title'
 
 export function MinimizedButton() {
     return(
-        <Collapsible.Trigger className="group w-full bg-white/2 py-3 px-5 flex items-center justify-between">
+        <Collapsible.Trigger className="group w-full bg-white/2 py-3 px-5 flex items-center justify-between gap-5">
             <Title />
 
             <Maximize2 strokeWidth={1.5} className="size-4 text-zinc-400 group-hover:text-zinc-100" />
