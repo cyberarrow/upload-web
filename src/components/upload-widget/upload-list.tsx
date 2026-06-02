@@ -1,7 +1,10 @@
+import { useUploads } from "../../store/uploads";
 import { UploadItem } from "./upload-item";
 
 export function UploadList() {
-    const isUploadListEmpty = false;
+    const { uploads } = useUploads();
+
+    const isUploadListEmpty = uploads.size === 0;
 
     return(
         <div className="px-3 flex flex-col gap-3">
@@ -13,8 +16,9 @@ export function UploadList() {
                 <span className="text-xs text-zinc-400">No uploads added</span>
             ) : (
                 <div className="flex flex-col gap-2">
-                    <UploadItem />
-                    <UploadItem />
+                    {Array.from(uploads).map(([uploadId, upload]) => {
+                        return <UploadItem key={uploadId}  upload={upload} />
+                    })}
                 </div>
             )}
         </div>
