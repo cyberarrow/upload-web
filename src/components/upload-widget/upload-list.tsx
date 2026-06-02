@@ -2,7 +2,7 @@ import { useUploads } from "../../store/uploads";
 import { UploadItem } from "./upload-item";
 
 export function UploadList() {
-    const { uploads } = useUploads();
+    const uploads = useUploads((store) => store.uploads);
 
     const isUploadListEmpty = uploads.size === 0;
 
