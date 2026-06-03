@@ -17,7 +17,7 @@ export function UploadList() {
             ) : (
                 <div className="flex flex-col gap-2">
                     {Array.from(uploads).map(([uploadId, upload]) => {
-                        return <UploadItem key={uploadId}  upload={upload} />
+                        return <UploadItem key={uploadId}  upload={upload} uploadId={uploadId} />
                     })}
                 </div>
             )}
