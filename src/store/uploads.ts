@@ -1,14 +1,16 @@
-import { Signal, Upload } from "lucide-react"
 import { create } from "zustand"
 import { immer } from "zustand/middleware/immer"
-import { enableMapSet} from "immer"
+import { enableMapSet } from "immer"
 import { uploadFileToStorage } from "../http/upload-file-to-storage"
+import { CanceledError } from "axios"
 
 export type Upload = {
-    name: string,
-    file: File,
-    status: 'progress' | 'success' | 'cancelled' | 'error',
-    abortController: AbortController
+    name: string;
+    file: File;
+    status: 'progress' | 'success' | 'cancelled' | 'error';
+    abortController: AbortController;
+    originalSizeInBytes: number;
+    uploadSizeInBytes: number;
 }
 
 type UploadState = {
@@ -47,7 +49,17 @@ export const useUploads = create<UploadState, [["zustand/immer", never]]>(immer(
 
         try {
             await uploadFileToStorage(
-                { file: upload.file },
+                { 
+                    file: upload.file,
+                    onProgress(sizeInBytes) {
+                        set((state) => {
+                            state.uploads.set(uploadId, {
+                            ...upload,
+                            uploadSizeInBytes: sizeInBytes,
+                            })
+                        })
+                    }  
+                },
                 { signal: upload.abortController.signal }
             );
 
@@ -58,14 +70,17 @@ export const useUploads = create<UploadState, [["zustand/immer", never]]>(immer(
                 })
             })
 
-        } catch {
-            set((state) => {
-                state.uploads.set(uploadId, {
-                    ...upload,
-                    status: 'error'
+        } catch(error) {
+            if(error instanceof CanceledError) {
+                set((state) => {
+                    state.uploads.set(uploadId, {
+                        ...upload,
+                        status: 'error'
+                    })
                 })
-            })
 
+                return
+            }
         }
     } 
 
@@ -78,7 +93,9 @@ export const useUploads = create<UploadState, [["zustand/immer", never]]>(immer(
                 name: file.name,
                 file,
                 abortController,
-                status: 'progress'
+                status: 'progress',
+                originalSizeInBytes: file.size,
+                uploadSizeInBytes: 0,
             }
 
             set((state) => {
