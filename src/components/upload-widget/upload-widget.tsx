@@ -4,9 +4,10 @@ import { UploadList } from "./upload-list";
 import * as Collapsible from "@radix-ui/react-collapsible";
 import { MinimizedButton } from "./minimized-button";
 import { motion, useCycle } from "motion/react"
+import { usePendingUploads } from "../../store/uploads";
 
 export function UploadWidget() {
-    const isThereAnyPendingUploads = true;
+    const { isThereAnyPendingUploads } = usePendingUploads();
     const [isWidgetOpen, toggleWidgetOpen] = useCycle(false, true)
     return(
         <Collapsible.Root onOpenChange={() => toggleWidgetOpen()} asChild>
