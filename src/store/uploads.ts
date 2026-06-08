@@ -1,114 +1,187 @@
-import { create } from "zustand"
-import { immer } from "zustand/middleware/immer"
-import { enableMapSet } from "immer"
-import { uploadFileToStorage } from "../http/upload-file-to-storage"
-import { CanceledError } from "axios"
+import { create } from "zustand";
+import { enableMapSet } from "immer";
+import { immer } from "zustand/middleware/immer";
+import { uploadFileToStorage } from "../http/upload-file-to-storage";
+import { CanceledError } from "axios";
+import { useShallow } from "zustand/shallow";
+import { compressImage } from "../utils/compress-image";
 
 export type Upload = {
-    name: string;
-    file: File;
-    status: 'progress' | 'success' | 'cancelled' | 'error';
-    abortController: AbortController;
-    originalSizeInBytes: number;
-    uploadSizeInBytes: number;
-}
+  name: string;
+  file: File;
+  abortController?: AbortController;
+  status: "progress" | "success" | "error" | "canceled";
+  originalSizeInBytes: number;
+  compressedSizeInBytes?: number;
+  uploadSizeInBytes: number;
+  remoteUrl?: string;
+};
 
 type UploadState = {
-    uploads: Map<string, Upload>
-    addUploads: (files: File[]) => void,
-    cancelUpload: (uploadId: string) => void,
-}
+  uploads: Map<string, Upload>;
+  addUploads: (files: File[]) => void;
+  cancelUpload: (uploadId: string) => void;
+  retryUpload: (uploadId: string) => void;
+};
 
-enableMapSet()
+enableMapSet();
 
-export const useUploads = create<UploadState, [["zustand/immer", never]]>(immer((set, get) => {
+export const useUploads = create<UploadState, [["zustand/immer", never]]>(
+  immer((set, get) => {
+    function updateUpload(uploadId: string, data: Partial<Upload>) {
+      const upload = get().uploads.get(uploadId);
 
-    function cancelUpload(uploadId: string) {
-        const upload = get().uploads.get(uploadId);
+      if (!upload) {
+        return;
+      }
 
-        if(!upload) {
-            return
-        }
-
-        upload.abortController.abort()
-
-        set((state) => {
-            state.uploads.set(uploadId, {
-                ...upload,
-                status: "cancelled"
-            })
-        })
+      set((state) => {
+        state.uploads.set(uploadId, {
+          ...upload,
+          ...data,
+        });
+      });
     }
 
-    async function processUpload(uploadId:string) {
-        const upload = get().uploads.get(uploadId);
+    async function processUpload(uploadId: string) {
+      const upload = get().uploads.get(uploadId);
 
-        if(!upload) {
-            return
+      if (!upload) {
+        return;
+      }
+
+      const abortController = new AbortController();
+
+      updateUpload(uploadId, {
+        uploadSizeInBytes: 0,
+        remoteUrl: undefined,
+        compressedSizeInBytes: undefined,
+        abortController,
+        status: "progress",
+      });
+
+      try {
+        const compressedFile = await compressImage({
+          file: upload.file,
+          maxWidth: 1000,
+          maxHeight: 1000,
+          quality: 0.8,
+        });
+
+        updateUpload(uploadId, { compressedSizeInBytes: compressedFile.size });
+
+        const { url } = await uploadFileToStorage(
+          {
+            file: compressedFile,
+            onProgress(sizeInBytes) {
+              updateUpload(uploadId, {
+                uploadSizeInBytes: sizeInBytes,
+              });
+            },
+          },
+          { signal: abortController.signal }
+        );
+
+        updateUpload(uploadId, {
+          status: "success",
+          remoteUrl: url,
+        });
+      } catch (err) {
+        if (err instanceof CanceledError) {
+          updateUpload(uploadId, {
+            status: "canceled",
+          });
+
+          return;
         }
 
-        try {
-            await uploadFileToStorage(
-                { 
-                    file: upload.file,
-                    onProgress(sizeInBytes) {
-                        set((state) => {
-                            state.uploads.set(uploadId, {
-                            ...upload,
-                            uploadSizeInBytes: sizeInBytes,
-                            })
-                        })
-                    }  
-                },
-                { signal: upload.abortController.signal }
-            );
+        updateUpload(uploadId, {
+          status: "error",
+        });
+      }
+    }
 
-            set((state) => {
-                state.uploads.set(uploadId, {
-                    ...upload,
-                    status: 'success',
-                })
-            })
+    function cancelUpload(uploadId: string) {
+      const upload = get().uploads.get(uploadId);
 
-        } catch(error) {
-            if(error instanceof CanceledError) {
-                set((state) => {
-                    state.uploads.set(uploadId, {
-                        ...upload,
-                        status: 'error'
-                    })
-                })
+      if (!upload) {
+        return;
+      }
 
-                return
-            }
-        }
-    } 
+      upload.abortController?.abort();
+
+      set((state) => {
+        state.uploads.set(uploadId, {
+          ...upload,
+          status: "canceled",
+        });
+      });
+    }
+
+    function retryUpload(uploadId: string) {
+      processUpload(uploadId);
+    }
 
     function addUploads(files: File[]) {
-        for(const file of files) {
-            const uploadId = crypto.randomUUID();
-            const abortController = new AbortController();
+      for (const file of files) {
+        const uploadId = crypto.randomUUID();
 
-            const upload: Upload = {
-                name: file.name,
-                file,
-                abortController,
-                status: 'progress',
-                originalSizeInBytes: file.size,
-                uploadSizeInBytes: 0,
-            }
+        const upload: Upload = {
+          name: file.name,
+          file,
+          status: "progress",
+          originalSizeInBytes: file.size,
+          uploadSizeInBytes: 0,
+        };
 
-            set((state) => {
-                state.uploads.set(uploadId, upload)
-            })
+        set((state) => {
+          state.uploads.set(uploadId, upload);
+        });
 
-            processUpload(uploadId)
-        }
+        processUpload(uploadId);
+      }
     }
 
     return {
-        uploads: new Map(),
-        addUploads,
-        cancelUpload,
-    }
-}))
+      uploads: new Map(),
+      addUploads,
+      cancelUpload,
+      retryUpload,
+    };
+  })
+);
+
+export const usePendingUploads = () => {
+  return useUploads(
+    useShallow((store) => {
+      const isThereAnyPendingUploads = Array.from(store.uploads.values()).some(
+        (upload) => upload.status === "progress"
+      );
+
+      if (!isThereAnyPendingUploads) {
+        return { isThereAnyPendingUploads, globalPercentage: 100 };
+      }
+
+      const { total, uploaded } = Array.from(store.uploads.values()).reduce(
+        (acc, upload) => {
+          if (upload.compressedSizeInBytes) {
+            acc.uploaded += upload.uploadSizeInBytes;
+          }
+
+          acc.total +=
+            upload.compressedSizeInBytes || upload.originalSizeInBytes;
+
+          return acc;
+        },
+        { total: 0, uploaded: 0 }
+      );
+
+      const globalPercentage = Math.min(
+        Math.round((uploaded * 100) / total),
+        100
+      );
+
+      return { isThereAnyPendingUploads, globalPercentage };
+    })
+  );
+};
